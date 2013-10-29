@@ -47,7 +47,7 @@ BEGIN
         FOR i IN array_lower( in_requirements, 1 ) .. array_upper( in_requirements, 1 ) LOOP
             SELECT patch_name INTO t_text FROM _v.patches WHERE patch_name = in_requirements[i];
             IF NOT FOUND THEN
-                t_text_a := t_text_a || t_text;
+                t_text_a := t_text_a || in_requirements[i];
             END IF;
         END LOOP;
         IF array_upper( t_text_a, 1 ) IS NOT NULL THEN
