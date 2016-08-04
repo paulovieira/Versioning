@@ -6,10 +6,10 @@ BEGIN;
 
 -- All functions are defined as 'RETURNS SETOF INT4' to be able to make them to RETURN literaly nothing (0 rows).
 -- >> RETURNS VOID<< IS similar, but it still outputs "empty line" in psql when calling.
-CREATE SCHEMA _v;
+CREATE SCHEMA IF NOT EXISTS _v;
 COMMENT ON SCHEMA _v IS 'Schema for versioning data and functionality.';
 
-CREATE TABLE _v.patches (
+CREATE TABLE IF NOT EXISTS _v.patches (
     patch_name  TEXT        PRIMARY KEY,
     applied_tsz TIMESTAMPTZ NOT NULL DEFAULT now(),
     applied_by  TEXT        NOT NULL,
