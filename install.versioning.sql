@@ -28,6 +28,7 @@ DECLARE
     t_text   TEXT;
     t_text_a TEXT[];
     i INT4;
+    requirements_length INT;
 BEGIN
     -- Thanks to this we know only one patch will be applied at a time
     LOCK TABLE _v.patches IN EXCLUSIVE MODE;
@@ -38,25 +39,39 @@ BEGIN
     END IF;
 
     t_text_a := ARRAY( SELECT patch_name FROM _v.patches WHERE patch_name = any( in_conflicts ) );
-    IF array_upper( t_text_a, 1 ) IS NOT NULL THEN
+    IF array_length( t_text_a, 1 ) IS NOT NULL THEN
         RAISE EXCEPTION 'Versioning patches conflict. Conflicting patche(s) installed: %.', array_to_string( t_text_a, ', ' );
     END IF;
 
-    IF array_upper( in_requirements, 1 ) IS NOT NULL THEN
+    requirements_length := coalesce(array_length( in_requirements, 1 ), 0);
+
+    IF requirements_length <> 0 THEN
         t_text_a := '{}';
-        FOR i IN array_lower( in_requirements, 1 ) .. array_upper( in_requirements, 1 ) LOOP
+        FOR i IN 1 .. array_length( in_requirements, 1 ) LOOP
             SELECT patch_name INTO t_text FROM _v.patches WHERE patch_name = in_requirements[i];
             IF NOT FOUND THEN
                 t_text_a := t_text_a || in_requirements[i];
             END IF;
         END LOOP;
-        IF array_upper( t_text_a, 1 ) IS NOT NULL THEN
+        IF array_length( t_text_a, 1 ) IS NOT NULL THEN
             RAISE EXCEPTION 'Missing prerequisite(s): %.', array_to_string( t_text_a, ', ' );
         END IF;
     END IF;
 
-    INSERT INTO _v.patches (patch_name, applied_tsz, applied_by, requires, conflicts ) VALUES ( in_patch_name, now(), current_user, coalesce( in_requirements, '{}' ), coalesce( in_conflicts, '{}' ) );
+    INSERT INTO _v.patches (
+        patch_name,
+        applied_tsz,
+        applied_by,
+        requires,
+        conflicts )
+    VALUES (
+        in_patch_name,
+        now(),
+        current_user,
+        coalesce( in_requirements, '{}' ),
+        coalesce( in_conflicts, '{}' ) );
     RETURN;
+
 END;
 $$ language plpgsql;
 COMMENT ON FUNCTION _v.register_patch( TEXT, TEXT[], TEXT[] ) IS 'Function to register patches in database. Raises exception if there are conflicts, prerequisites are not installed or the migration has already been installed.';
@@ -79,7 +94,7 @@ BEGIN
     LOCK TABLE _v.patches IN EXCLUSIVE MODE;
 
     t_text_a := ARRAY( SELECT patch_name FROM _v.patches WHERE in_patch_name = ANY( requires ) );
-    IF array_upper( t_text_a, 1 ) IS NOT NULL THEN
+    IF array_length( t_text_a, 1 ) IS NOT NULL THEN
         RAISE EXCEPTION 'Cannot uninstall %, as it is required by: %.', in_patch_name, array_to_string( t_text_a, ', ' );
     END IF;
 
