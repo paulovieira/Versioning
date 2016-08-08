@@ -23,37 +23,45 @@ COMMENT ON COLUMN _v.patches.applied_by  IS 'Who applied this patch (PostgreSQL 
 COMMENT ON COLUMN _v.patches.requires    IS 'List of patches that are required for given patch.';
 COMMENT ON COLUMN _v.patches.conflicts   IS 'List of patches that conflict with given patch.';
 
-CREATE OR REPLACE FUNCTION _v.register_patch( IN in_patch_name TEXT, IN in_requirements TEXT[], in_conflicts TEXT[], OUT versioning INT4 ) RETURNS setof INT4 AS $$
+CREATE OR REPLACE FUNCTION _v.register_patch( IN in_patch_name TEXT, IN in_requirements TEXT[], in_conflicts TEXT[] ) 
+RETURNS INT4 
+AS $$
 DECLARE
     t_text   TEXT;
     t_text_a TEXT[];
-    i INT4;
-    requirements_length INT;
+    i        INT4;
+    length   INT4;
 BEGIN
     -- Thanks to this we know only one patch will be applied at a time
     LOCK TABLE _v.patches IN EXCLUSIVE MODE;
 
-    SELECT patch_name INTO t_text FROM _v.patches WHERE patch_name = in_patch_name;
-    IF FOUND THEN
-        RAISE EXCEPTION 'Patch % is already applied!', in_patch_name;
+    SELECT patch_name FROM _v.patches WHERE patch_name = in_patch_name INTO t_text;
+    IF t_text IS NOT NULL THEN
+        --RAISE EXCEPTION 'Patch "%" is already applied!', in_patch_name;
+        return 1;
     END IF;
 
     t_text_a := ARRAY( SELECT patch_name FROM _v.patches WHERE patch_name = any( in_conflicts ) );
-    IF array_length( t_text_a, 1 ) IS NOT NULL THEN
+    length := coalesce(array_length( t_text_a, 1 ), 0);
+
+    IF length > 0 THEN
         RAISE EXCEPTION 'Versioning patches conflict. Conflicting patche(s) installed: %.', array_to_string( t_text_a, ', ' );
     END IF;
 
-    requirements_length := coalesce(array_length( in_requirements, 1 ), 0);
+    length := coalesce(array_length( in_requirements, 1 ), 0);
 
-    IF requirements_length <> 0 THEN
+    IF length > 0 THEN
         t_text_a := '{}';
-        FOR i IN 1 .. array_length( in_requirements, 1 ) LOOP
+
+        FOR i IN 1 .. length LOOP
             SELECT patch_name INTO t_text FROM _v.patches WHERE patch_name = in_requirements[i];
             IF NOT FOUND THEN
                 t_text_a := t_text_a || in_requirements[i];
             END IF;
         END LOOP;
-        IF array_length( t_text_a, 1 ) IS NOT NULL THEN
+
+        length := coalesce(array_length( t_text_a, 1 ), 0);
+        IF length > 0 THEN
             RAISE EXCEPTION 'Missing prerequisite(s): %.', array_to_string( t_text_a, ', ' );
         END IF;
     END IF;
@@ -70,41 +78,51 @@ BEGIN
         current_user,
         coalesce( in_requirements, '{}' ),
         coalesce( in_conflicts, '{}' ) );
-    RETURN;
+    RETURN 0;
 
 END;
 $$ language plpgsql;
 COMMENT ON FUNCTION _v.register_patch( TEXT, TEXT[], TEXT[] ) IS 'Function to register patches in database. Raises exception if there are conflicts, prerequisites are not installed or the migration has already been installed.';
 
-CREATE OR REPLACE FUNCTION _v.register_patch( TEXT, TEXT[] ) RETURNS setof INT4 AS $$
+CREATE OR REPLACE FUNCTION _v.register_patch( TEXT, TEXT[] ) 
+RETURNS INT4 
+AS $$
     SELECT _v.register_patch( $1, $2, NULL );
 $$ language sql;
 COMMENT ON FUNCTION _v.register_patch( TEXT, TEXT[] ) IS 'Wrapper to allow registration of patches without conflicts.';
-CREATE OR REPLACE FUNCTION _v.register_patch( TEXT ) RETURNS setof INT4 AS $$
+
+CREATE OR REPLACE FUNCTION _v.register_patch( TEXT ) 
+RETURNS INT4 
+AS $$
     SELECT _v.register_patch( $1, NULL, NULL );
 $$ language sql;
 COMMENT ON FUNCTION _v.register_patch( TEXT ) IS 'Wrapper to allow registration of patches without requirements and conflicts.';
 
-CREATE OR REPLACE FUNCTION _v.unregister_patch( IN in_patch_name TEXT, OUT versioning INT4 ) RETURNS setof INT4 AS $$
+CREATE OR REPLACE FUNCTION _v.unregister_patch( IN in_patch_name TEXT) 
+RETURNS INT4 
+AS $$
 DECLARE
     i        INT4;
+    length   INT4;
     t_text_a TEXT[];
 BEGIN
     -- Thanks to this we know only one patch will be applied at a time
     LOCK TABLE _v.patches IN EXCLUSIVE MODE;
 
     t_text_a := ARRAY( SELECT patch_name FROM _v.patches WHERE in_patch_name = ANY( requires ) );
-    IF array_length( t_text_a, 1 ) IS NOT NULL THEN
+    length := coalesce(array_length( t_text_a, 1 ), 0);
+
+    IF length > 0 THEN
         RAISE EXCEPTION 'Cannot uninstall %, as it is required by: %.', in_patch_name, array_to_string( t_text_a, ', ' );
     END IF;
 
     DELETE FROM _v.patches WHERE patch_name = in_patch_name;
     GET DIAGNOSTICS i = ROW_COUNT;
     IF i < 1 THEN
-        RAISE EXCEPTION 'Patch % is not installed, so it can''t be uninstalled!', in_patch_name;
+        RAISE EXCEPTION 'Patch % is not installed.', in_patch_name;
     END IF;
 
-    RETURN;
+    RETURN 0;
 END;
 $$ language plpgsql;
 COMMENT ON FUNCTION _v.unregister_patch( TEXT ) IS 'Function to unregister patches in database. Dies if the patch is not registered, or if unregistering it would break dependencies.';
