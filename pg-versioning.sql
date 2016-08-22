@@ -38,6 +38,7 @@ BEGIN
     SELECT patch_name FROM _v.patches WHERE patch_name = in_patch_name INTO t_text;
     IF t_text IS NOT NULL THEN
         --RAISE EXCEPTION 'Patch "%" is already applied!', in_patch_name;
+        RAISE NOTICE 'Patch "%" is already applied. Skipping.', in_patch_name;
         return 1;
     END IF;
 
@@ -78,6 +79,7 @@ BEGIN
         current_user,
         coalesce( in_requirements, '{}' ),
         coalesce( in_conflicts, '{}' ) );
+    
     RETURN 0;
 
 END;
