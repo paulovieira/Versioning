@@ -1,11 +1,11 @@
-## pg-versioning
+# pg-versioning
 
 **NOTE:** this is a forked version of https://github.com/depesz/Versioning
 
-This project strives to provide simple way to manage changes to
+This project strives to provide a simple way to manage changes to a Postgres 
 database.
 
-Instead of making changes on development server, then finding
+Instead of making changes on the development server, then finding
 differences between production and development, deciding which ones
 should be installed on production, and finding a way to install them -
 you start with writing diffs directly!
@@ -103,16 +103,16 @@ DROP SCHEMA _v CASCADE;
 
 #### Differences relatively to the original project
 
-The original project was started by [depesz!](https://www.depesz.com/) and lives here: https://github.com/depesz/Versioning
+The original project was started by [depesz](https://www.depesz.com/) and lives here: https://github.com/depesz/Versioning
 
 This fork has been changed a little in  the `register_patch` function: it returns an `INT4` instead of `setof INT4`:
-* if the patch already exists, returns 1 and the patch is not registered (can be used to skip the execution of the patch, as shown in the example)
-* if the patch does not exist:
-    - if there are conflicting patches registered, an exception is raised (as in the original version)
-    - if there are missing pre-requisites, an exception is raised (as in the original version)
+* If the patch is already registered, returns 1 and won't register it (return early). Can be used to skip the execution of the patch, as shown in the example above.
+* If the patch does not exist:
+    - If there are conflicting patches already registered, an exception is raised (as in the original version)
+    - If there are pre-requisites patches not registered, an exception is raised (as in the original version)
     - otherwise, the patch is registered and returns 0
 
 The `unregister_patch` function was changed similarly:
 * if the patch is required by some other patch, an exception is raised (as in the original version)
-* if the patch is not installed, an exception is raised (as in the original version)
-* otherwise, the patch is deleted and returns 0
+* if the patch is not registered, an exception is raised (as in the original version)
+* otherwise, the patch is unregistered (deleted) and returns 0
