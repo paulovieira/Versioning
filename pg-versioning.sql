@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS _v.patches (
     applied_tsz TIMESTAMPTZ NOT NULL DEFAULT now(),
     applied_by  TEXT        NOT NULL,
     requires    TEXT[],
-    conflicts   TEXT[]
+    conflicts   TEXT[],
+    description TEXT
 );
 COMMENT ON TABLE _v.patches              IS 'Contains information about what patches are currently applied on database.';
 COMMENT ON COLUMN _v.patches.patch_name  IS 'Name of patch, has to be unique for every patch.';
@@ -22,8 +23,9 @@ COMMENT ON COLUMN _v.patches.applied_tsz IS 'When the patch was applied.';
 COMMENT ON COLUMN _v.patches.applied_by  IS 'Who applied this patch (PostgreSQL username)';
 COMMENT ON COLUMN _v.patches.requires    IS 'List of patches that are required for given patch.';
 COMMENT ON COLUMN _v.patches.conflicts   IS 'List of patches that conflict with given patch.';
+COMMENT ON COLUMN _v.patches.description IS 'Description of the patch.';
 
-CREATE OR REPLACE FUNCTION _v.register_patch( IN in_patch_name TEXT, IN in_requirements TEXT[], in_conflicts TEXT[] ) 
+CREATE OR REPLACE FUNCTION _v.register_patch( IN in_patch_name TEXT, IN in_requirements TEXT[], in_conflicts TEXT[], in_description TEXT ) 
 RETURNS INT4 
 AS $$
 DECLARE
@@ -37,7 +39,6 @@ BEGIN
 
     SELECT patch_name FROM _v.patches WHERE patch_name = in_patch_name INTO t_text;
     IF t_text IS NOT NULL THEN
-        --RAISE EXCEPTION 'Patch "%" is already applied!', in_patch_name;
         RAISE NOTICE 'Patch "%" is already applied. Skipping.', in_patch_name;
         return 1;
     END IF;
@@ -72,35 +73,37 @@ BEGIN
         applied_tsz,
         applied_by,
         requires,
-        conflicts )
+        conflicts,
+        description )
     VALUES (
         in_patch_name,
         now(),
         current_user,
         coalesce( in_requirements, '{}' ),
-        coalesce( in_conflicts, '{}' ) );
-    
+        coalesce( in_conflicts, '{}' ),
+        in_description);
+
     RETURN 0;
 
 END;
 $$ language plpgsql;
-COMMENT ON FUNCTION _v.register_patch( TEXT, TEXT[], TEXT[] ) IS 'Function to register patches in database. Raises exception if there are conflicts, prerequisites are not installed or the migration has already been installed.';
+COMMENT ON FUNCTION _v.register_patch( TEXT, TEXT[], TEXT[], TEXT ) IS 'Function to register patches in database. If the patch is already registered returns early with the value 1. Raises exception if there are conflicts or prerequisites are not installed. ';
 
-CREATE OR REPLACE FUNCTION _v.register_patch( TEXT, TEXT[] ) 
+CREATE OR REPLACE FUNCTION _v.register_patch( TEXT, TEXT[], TEXT ) 
 RETURNS INT4 
 AS $$
-    SELECT _v.register_patch( $1, $2, NULL );
+    SELECT _v.register_patch( $1, $2, NULL, $3 );
 $$ language sql;
-COMMENT ON FUNCTION _v.register_patch( TEXT, TEXT[] ) IS 'Wrapper to allow registration of patches without conflicts.';
+COMMENT ON FUNCTION _v.register_patch( TEXT, TEXT[], TEXT ) IS 'Wrapper to allow registration of patches without conflicts.';
 
-CREATE OR REPLACE FUNCTION _v.register_patch( TEXT ) 
+CREATE OR REPLACE FUNCTION _v.register_patch( TEXT, TEXT ) 
 RETURNS INT4 
 AS $$
-    SELECT _v.register_patch( $1, NULL, NULL );
+    SELECT _v.register_patch( $1, NULL, NULL, $2 );
 $$ language sql;
-COMMENT ON FUNCTION _v.register_patch( TEXT ) IS 'Wrapper to allow registration of patches without requirements and conflicts.';
+COMMENT ON FUNCTION _v.register_patch( TEXT, TEXT ) IS 'Wrapper to allow registration of patches without requirements and conflicts.';
 
-CREATE OR REPLACE FUNCTION _v.unregister_patch( IN in_patch_name TEXT) 
+CREATE OR REPLACE FUNCTION _v.unregister_patch( in_patch_name TEXT) 
 RETURNS INT4 
 AS $$
 DECLARE
@@ -127,6 +130,6 @@ BEGIN
     RETURN 0;
 END;
 $$ language plpgsql;
-COMMENT ON FUNCTION _v.unregister_patch( TEXT ) IS 'Function to unregister patches in database. Dies if the patch is not registered, or if unregistering it would break dependencies.';
+COMMENT ON FUNCTION _v.unregister_patch( TEXT ) IS 'Function to unregister patches in database. Raises exception if the patch is not registered or if unregistering it would break dependencies.';
 
 COMMIT;

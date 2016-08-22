@@ -21,7 +21,7 @@ Suppose the initial design of the database was badly done. For instance:
 DO $$
 
 DECLARE
-patch_exists int := _v.register_patch('first-patch');
+patch_exists int := _v.register_patch('160822', 'initial database design');
 
 BEGIN
 
@@ -47,7 +47,7 @@ Sometime in the future we conclude that a new separate `users` table is needed. 
 DO $$
 
 DECLARE
-patch_exists int := _v.register_patch('second-patch');
+patch_exists int := _v.register_patch('160823', 'add the "users" table, delete "email" column from "stuff", move data');
 
 BEGIN
 
@@ -111,6 +111,10 @@ This fork has been changed a little in  the `register_patch` function: it return
     - If there are conflicting patches already registered, an exception is raised (as in the original version)
     - If there are pre-requisites patches not registered, an exception is raised (as in the original version)
     - otherwise, the patch is registered and returns 0
+
+This way we can check for the return value of `register_patch` and skip the execution of the statements if it returns 1.
+
+The `register_patch` function also accepts a new parameter at the end: description (text).
 
 The `unregister_patch` function was changed similarly:
 * if the patch is required by some other patch, an exception is raised (as in the original version)
